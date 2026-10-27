@@ -14,17 +14,24 @@
   var FULL = 'Home holds nine apps. Remove one first.', LAST = 'Home needs one app';
 
   var PRIMARY_APPS = [
-    { id: 'stremio', name: 'Stremio', mark: true, appId: 'IkWsFHtOY9.Stremio' },
     { id: 'netflix', name: 'Netflix', mark: true, appId: 'org.tizen.netflix-app' },
-    { id: 'disneyplus', name: 'Disney+', mark: true, appId: 'MCmYXNxgcu.DisneyPlus' },
     { id: 'youtube', name: 'YouTube', mark: true, appId: '9Ur5IzDKqV.TizenYouTube' },
-    { id: 'appletv', name: 'Apple TV', mark: true, appId: 'com.samsung.tv.aria-video' },
+    { id: 'youtubetv', name: 'YouTube TV', mark: false, appId: 'PvWgqxV3Xa.YouTubeTV' },
+    { id: 'hulu', name: 'Hulu', mark: false, appId: 'LBUAQX1exg.Hulu' },
+    { id: 'disneyplus', name: 'Disney+', mark: true, appId: 'MCmYXNxgcu.DisneyPlus' },
+    { id: 'hbomax', name: 'Max', mark: true, appId: '5b8c3eb16b.BeamCTVDev' },
     { id: 'primevideo', name: 'Prime Video', mark: true, appId: 'org.tizen.primevideo' },
+    { id: 'appletv', name: 'Apple TV', mark: true, appId: 'com.samsung.tv.aria-video' },
+    { id: 'peacock', name: 'Peacock', mark: false, appId: 'gzcc4LRFBF.Peacock' }
+  ];
+  /* Retain Nathan's original built-ins so old saved Home orders still resolve. */
+  var LEGACY_APPS = [
+    { id: 'stremio', name: 'Stremio', mark: true, appId: 'IkWsFHtOY9.Stremio' },
     { id: 'abciview', name: 'ABC iview', mark: true, appId: 'mWK87Xghap.ABCiview' },
     { id: 'sbs', name: 'SBS On Demand', mark: true, appId: 'OyE7OuxlUi.SBSOnDemand' },
     { id: 'applemusic', name: 'Apple Music', mark: true, appId: 'org.tizen.apple.apple-music' }
   ];
-  var PRIMARY = PRIMARY_APPS.map(function (a) { return a.id; }), APPS = PRIMARY_APPS.slice(), ALPHA = [];
+  var PRIMARY = PRIMARY_APPS.map(function (a) { return a.id; }), APPS = PRIMARY_APPS.concat(LEGACY_APPS), BUILT_IN = APPS.map(function (a) { return a.id; }), ALPHA = [];
   var WALLS = window.CleanFrameWallpapers || [{ id: 'misty', name: 'Misty coast', tone: 'light', ut: { tr: 'mist', br: 'mist' }, frostVeil: .20 }];
   var ADAPTIVE_INK = window.CleanFrameAdaptiveInk || {};
   WALLS.forEach(function (w) { w.ut = w.ut || { tr: 'light', br: 'light' }; w.frostVeil = w.frostVeil || .12; });
@@ -92,6 +99,7 @@
 
   /* ---------- Helpers ---------- */
   function app(id) { for (var i = 0; i < APPS.length; i++) if (APPS[i].id === id) return APPS[i]; return null; }
+  function appId(id) { for (var i = 0; i < APPS.length; i++) if (APPS[i].appId === id) return APPS[i].id; return null; }
   function wall(id) { for (var i = 0; i < WALLS.length; i++) if (WALLS[i].id === id) return WALLS[i]; return null; }
   function wallIndex(id) { for (var i = 0; i < WALLS.length; i++) if (WALLS[i].id === id) return i; return 0; }
   function frostClass(w) { var i = [.12, .20, .30, .36, .44].indexOf(w.frostVeil); return i > 0 ? ' fv-' + (i + 1) : ''; }
@@ -357,7 +365,7 @@
     out.appRecords = [];
     c.home.concat(c.recent).forEach(function (key) {
       var a = app(key);
-      if (a && PRIMARY.indexOf(key) < 0 && !out.appRecords.some(function (r) { return r.id === key; })) out.appRecords.push({ id: a.id, appId: a.appId, name: a.name, brand: a.brand || '', icon: a.icon || '' });
+      if (a && BUILT_IN.indexOf(key) < 0 && !out.appRecords.some(function (r) { return r.id === key; })) out.appRecords.push({ id: a.id, appId: a.appId, name: a.name, brand: a.brand || '', icon: a.icon || '' });
     });
     return out;
   }
@@ -474,7 +482,7 @@
       oldFocus = top().id === 'apps' ? ALPHA[top().f.i] : null;
       ALPHA = [];
       entries.forEach(function (entry) {
-        var id = PRIMARY.indexOf(entry.brand) >= 0 ? entry.brand : entry.appId, a;
+        var id = appId(entry.appId) || (BUILT_IN.indexOf(entry.brand) >= 0 ? entry.brand : entry.appId), a;
         if (!safeId(id) || !safeId(entry.appId) || ALPHA.indexOf(id) >= 0) return;
         a = app(id);
         if (!a) { a = { id: id }; APPS.push(a); }
@@ -491,7 +499,14 @@
   }
 
   /* ---------- Navigation targets ---------- */
-  function utils() { return ['art', 'apps', 'settings']; }
+  function artModeAvailable() {
+    var model;
+    try { model = window.tizen && tizen.systeminfo && tizen.systeminfo.getCapability('http://tizen.org/system/model_name'); }
+    catch (e) { return true; }
+    return !/QN90D/i.test(String(model || ''));
+  }
+  var ART_MODE_AVAILABLE = artModeAvailable();
+  function utils() { return ART_MODE_AVAILABLE ? ['art', 'apps', 'settings'] : ['apps', 'settings']; }
   /* prev/next run along the apps; out goes to the controls, inn comes back (or to a per-app action). */
   function axes() {
     var v = S.c.layout === 'list';

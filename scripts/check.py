@@ -10,8 +10,11 @@ manifest = XML.parse(app / 'config.xml').getroot()
 ns = {'w': 'http://www.w3.org/ns/widgets', 't': 'http://tizen.org/ns/widgets'}
 identity = manifest.find('t:application', ns)
 assert identity is not None, 'Missing application identity'
-assert identity.get('package') == 'nClrkHome1', 'Keep the installed package identity stable'
-assert identity.get('id') == 'nClrkHome1.FrameHome', 'Keep the installed application ID stable'
+assert identity.get('package') == 'MiQ4vj1W1G', 'Use Kevin\'s SDK-generated package identity'
+assert identity.get('id') == 'MiQ4vj1W1G.CleanFrameKevin', 'Use Kevin\'s SDK-generated application ID'
+assert identity.get('id') != 'nClrkHome1.FrameHome', 'Reference-owner application ID must not be reused'
+device_source = (app / 'device.js').read_text()
+assert "var SELF = 'MiQ4vj1W1G.CleanFrameKevin';" in device_source, 'Device self-filter must match the manifest application ID'
 assert manifest.get('version') == json.loads((root / 'package.json').read_text())['version'], 'Manifest/package versions differ'
 for tag in ['content', 'icon']:
     node = manifest.find('w:' + tag, ns)

@@ -5,6 +5,7 @@ import { openPreview, root } from './browser.mjs';
 
 const KEY = 'cleanframe.home.v1';
 const PRIMARY = ['stremio', 'netflix', 'disneyplus', 'youtube', 'appletv', 'primevideo', 'abciview', 'sbs', 'applemusic'];
+const KEVIN_DEFAULTS = ['netflix', 'youtube', 'youtubetv', 'hulu', 'disneyplus', 'hbomax', 'primevideo', 'appletv', 'peacock'];
 const IDS = ['IkWsFHtOY9.Stremio', 'org.tizen.netflix-app', 'MCmYXNxgcu.DisneyPlus', '9Ur5IzDKqV.TizenYouTube', 'com.samsung.tv.aria-video', 'org.tizen.primevideo', 'mWK87Xghap.ABCiview', 'OyE7OuxlUi.SBSOnDemand', 'org.tizen.apple.apple-music'];
 const NAMES = ['Stremio', 'Netflix', 'Disney+', 'YouTube', 'Apple TV', 'Prime Video', 'ABC iview', 'SBS On Demand', 'Apple Music'];
 const EXTRA = 'AbCdEf1234.FamilyApp', SPOTIFY = 'rJeHak5zRg.Spotify';
@@ -13,7 +14,7 @@ const CATALOG = IDS.map((id, i) => ({ id, name: NAMES[i], show: true, iconPath: 
   { id: EXTRA, name: UNSAFE_NAME, show: true, iconPath: '' },
   { id: SPOTIFY, name: 'Spotify', show: true, iconPath: '' },
   { id: '5b8c3eb16b.BeamCTVDev', name: 'HBO Max', show: true, iconPath: '' },
-  { id: 'nClrkHome1.FrameHome', name: 'CleanFrame', show: true },
+  { id: 'MiQ4vj1W1G.CleanFrameKevin', name: 'CleanFrame', show: true },
   { id: 'AbCdEf1234.worker', name: 'Background worker', show: true },
   { id: 'com.samsung.tv.cobalt-yt', name: 'YouTube', show: true }
 ]);
@@ -42,7 +43,7 @@ async function run(name, fn) {
 async function closePage() { if (current) { current.__closing = true; await current.close(); current = null; } }
 
 // Production still calls its unmodified device.js adapter.
-function installHarness({ seed, legacy, mock, catalog, minuteMs, catalogFailure, noFontAPI, storageFailure }) {
+function installHarness({ seed, legacy, mock, catalog, minuteMs, catalogFailure, noFontAPI, storageFailure, model }) {
   if (!sessionStorage.getItem('__cleanframe_seeded')) {
     if (seed !== undefined) localStorage.setItem('cleanframe.home.v1', typeof seed === 'string' ? seed : JSON.stringify(seed));
     if (legacy !== undefined) localStorage.setItem('cleanframe.shore.v1', typeof legacy === 'string' ? legacy : JSON.stringify(legacy));
@@ -66,6 +67,7 @@ function installHarness({ seed, legacy, mock, catalog, minuteMs, catalogFailure,
   if (!mock) return;
   window.__tv = { catalog, catalogFailure: !!catalogFailure, launchFailure: false, holdCatalog: false, pending: [], calls: [], catalogCalls: 0 };
   window.tizen = {
+    systeminfo: { getCapability(key) { return key === 'http://tizen.org/system/model_name' ? (model || '') : ''; } },
     ApplicationControlData: function (key, value) { this.key = key; this.value = value; },
     ApplicationControl: function (operation, uri, mime, category, data) { Object.assign(this, { operation, uri, mime, category, data }); },
     application: {
@@ -228,6 +230,12 @@ try {
     check('Discovery failure preserves saved native pin', (await state()).dock.includes(EXTRA));
   });
   await run('Startup fallbacks remain usable', async () => {
+    await page({ seed: null });
+    check('Fresh installs use Kevin\'s confirmed shortcuts', same((await state()).dock, KEVIN_DEFAULTS));
+    await closePage();
+    await page({ model: 'QN85QN90DDFXZA' });
+    check('QN90D omits unsupported Art Mode control', !(await call('actions')).includes('util.art'));
+    await closePage();
     await page({ noFontAPI: true });
     check('Missing font-loading API has usable baseline Home', (await state()).look.font === 'manrope' && (await call('where')).focusCount === 1);
     await closePage();
