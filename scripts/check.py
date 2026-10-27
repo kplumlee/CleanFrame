@@ -16,6 +16,9 @@ assert identity.get('id') != 'nClrkHome1.FrameHome', 'Reference-owner applicatio
 device_source = (app / 'device.js').read_text()
 assert "var SELF = 'MiQ4vj1W1G.CleanFrameKevin';" in device_source, 'Device self-filter must match the manifest application ID'
 assert manifest.get('version') == json.loads((root / 'package.json').read_text())['version'], 'Manifest/package versions differ'
+privileges = [node.get('name') for node in manifest.findall('t:privilege', ns)]
+assert 'http://tizen.org/privilege/tv.window' in privileges, 'HDMI TVWindow source support needs the TV window privilege'
+assert 'http://tizen.org/privilege/systeminfo' in privileges, 'HDMI source discovery needs the SystemInfo privilege'
 for tag in ['content', 'icon']:
     node = manifest.find('w:' + tag, ns)
     assert node is not None and (app / node.get('src', '')).is_file(), 'Missing ' + tag + ' file'

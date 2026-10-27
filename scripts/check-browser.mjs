@@ -5,7 +5,11 @@ import { openPreview, root } from './browser.mjs';
 
 const KEY = 'cleanframe.home.v1';
 const PRIMARY = ['stremio', 'netflix', 'disneyplus', 'youtube', 'appletv', 'primevideo', 'abciview', 'sbs', 'applemusic'];
-const KEVIN_DEFAULTS = ['netflix', 'youtube', 'youtubetv', 'hulu', 'disneyplus', 'hbomax', 'primevideo', 'appletv', 'peacock'];
+const KEVIN_DEFAULTS = ['netflix', 'youtube', 'youtubetv', 'hulu', 'disneyplus', 'hbomax', 'primevideo', 'appletv', 'peacock', 'xbox'];
+const HDMI_SOURCES = {
+  connected: [{ type: 'HDMI', number: 2, token: 'connected-hdmi-2' }, { type: 'TV', number: 0 }],
+  disconnected: [{ type: 'HDMI', number: 3, token: 'disconnected-hdmi-3' }]
+};
 const IDS = ['IkWsFHtOY9.Stremio', 'org.tizen.netflix-app', 'MCmYXNxgcu.DisneyPlus', '9Ur5IzDKqV.TizenYouTube', 'com.samsung.tv.aria-video', 'org.tizen.primevideo', 'mWK87Xghap.ABCiview', 'OyE7OuxlUi.SBSOnDemand', 'org.tizen.apple.apple-music'];
 const NAMES = ['Stremio', 'Netflix', 'Disney+', 'YouTube', 'Apple TV', 'Prime Video', 'ABC iview', 'SBS On Demand', 'Apple Music'];
 const EXTRA = 'AbCdEf1234.FamilyApp', SPOTIFY = 'rJeHak5zRg.Spotify';
@@ -43,7 +47,7 @@ async function run(name, fn) {
 async function closePage() { if (current) { current.__closing = true; await current.close(); current = null; } }
 
 // Production still calls its unmodified device.js adapter.
-function installHarness({ seed, legacy, mock, catalog, minuteMs, catalogFailure, noFontAPI, storageFailure, model }) {
+function installHarness({ seed, legacy, mock, catalog, minuteMs, catalogFailure, noFontAPI, storageFailure, model, sources }) {
   if (!sessionStorage.getItem('__cleanframe_seeded')) {
     if (seed !== undefined) localStorage.setItem('cleanframe.home.v1', typeof seed === 'string' ? seed : JSON.stringify(seed));
     if (legacy !== undefined) localStorage.setItem('cleanframe.shore.v1', typeof legacy === 'string' ? legacy : JSON.stringify(legacy));
@@ -65,9 +69,19 @@ function installHarness({ seed, legacy, mock, catalog, minuteMs, catalogFailure,
   };
   if (noFontAPI) Object.defineProperty(document, 'fonts', { configurable: true, value: undefined });
   if (!mock) return;
-  window.__tv = { catalog, catalogFailure: !!catalogFailure, launchFailure: false, holdCatalog: false, pending: [], calls: [], catalogCalls: 0 };
+  sources = sources || {
+    connected: [{ type: 'HDMI', number: 2, token: 'connected-hdmi-2' }, { type: 'TV', number: 0 }],
+    disconnected: [{ type: 'HDMI', number: 3, token: 'disconnected-hdmi-3' }]
+  };
+  window.__tv = { catalog, catalogFailure: !!catalogFailure, launchFailure: false, sourceFailure: false, holdCatalog: false, pending: [], calls: [], catalogCalls: 0, sources };
   window.tizen = {
-    systeminfo: { getCapability(key) { return key === 'http://tizen.org/system/model_name' ? (model || '') : ''; } },
+    systeminfo: {
+      getCapability(key) { return key === 'http://tizen.org/system/model_name' ? (model || '') : ''; },
+      getPropertyValue(key, ok, fail) {
+        const tv = window.__tv;
+        setTimeout(() => tv.sourceFailure ? fail({ name: 'UnknownError', message: 'HDMI sources unavailable for QA' }) : ok({ connected: tv.sources.connected.map(source => ({ ...source })), disconnected: tv.sources.disconnected.map(source => ({ ...source })) }), 0);
+      }
+    },
     ApplicationControlData: function (key, value) { this.key = key; this.value = value; },
     ApplicationControl: function (operation, uri, mime, category, data) { Object.assign(this, { operation, uri, mime, category, data }); },
     application: {
@@ -84,6 +98,20 @@ function installHarness({ seed, legacy, mock, catalog, minuteMs, catalogFailure,
       launchAppControl(control, id, ok, fail) {
         const tv = window.__tv; tv.calls.push({ method: 'launchAppControl', id, control });
         setTimeout(() => tv.launchFailure ? fail({ name: 'UnknownError', message: 'Screen unavailable for QA' }) : ok(), 0);
+      }
+    },
+    tvwindow: {
+      setSource(source, ok, fail) {
+        const tv = window.__tv; tv.calls.push({ method: 'setSource', source: { ...source } });
+        setTimeout(() => tv.sourceFailure ? fail({ name: 'UnknownError', message: 'HDMI source unavailable for QA' }) : ok(), 0);
+      },
+      show(ok, fail, rectangle, windowType, zOrder) {
+        const tv = window.__tv; tv.calls.push({ method: 'showSource', rectangle, windowType, zOrder });
+        setTimeout(() => tv.sourceFailure ? fail({ name: 'UnknownError', message: 'HDMI window unavailable for QA' }) : ok(), 0);
+      },
+      hide(ok, fail) {
+        const tv = window.__tv; tv.calls.push({ method: 'hideSource' });
+        setTimeout(() => tv.sourceFailure ? fail({ name: 'UnknownError', message: 'HDMI hide unavailable for QA' }) : ok(), 0);
       }
     }
   };
@@ -206,12 +234,12 @@ try {
     for (const theme of ['list', 'shore', 'grid']) {
       await page({ seed: baseline({ theme, dock: ['youtube', 'netflix'], wallpaper: walls[1].id, lastApp: 'youtube', mode: '15' }) });
       const s = await state();
-      check(theme + ' preserves order, wallpaper and rotation', same(s.dock, ['youtube', 'netflix']) && s.wallpaper === walls[1].id && s.mode === '15' && s.lastApp === 'youtube', s);
+      check(theme + ' preserves order, wallpaper and rotation while appending the one-time Xbox shortcut', same(s.dock, ['youtube', 'netflix', 'xbox']) && s.wallpaper === walls[1].id && s.mode === '15' && s.lastApp === 'youtube', s);
       check(theme + ' maps to intended two-layout appearance', s.look.layout === (theme === 'list' ? 'list' : 'dock') && s.look.bg === (theme === 'list' ? 'dark' : 'photo'), s.look);
       await closePage();
     }
     await page({ seed: undefined, legacy: baseline({ theme: 'list', dock: ['netflix'], lastApp: 'netflix' }) });
-    check('Old shore key is read', (await state()).dock.length === 1 && (await state()).look.layout === 'list');
+    check('Old shore key is read and receives the one-time Xbox shortcut', (await state()).dock.length === 2 && (await state()).dock.includes('xbox') && (await state()).look.layout === 'list');
     await look({ controls: 'text' });
     check('Next completed edit writes stable home key', (await stored()).dock[0] === 'netflix');
     await current.reload(); await ready();
@@ -219,11 +247,11 @@ try {
   });
   await run('Invalid preferences and saved native pins', async () => {
     await page({ seed: '{broken', legacy: baseline({ dock: ['netflix'], lastApp: 'netflix' }) });
-    check('Malformed primary recovers valid legacy key', same((await state()).dock, ['netflix']));
+    check('Malformed primary recovers valid legacy key and appends Xbox once', same((await state()).dock, ['netflix', 'xbox']));
     await closePage();
     await page({ seed: { dock: [], wallpaper: 'missing', mode: 'constructor', theme: 'constructor' } });
     const s = await state();
-    check('Invalid values recover usable bounded Home', s.dock.length >= 1 && s.dock.length <= 9 && walls.some(w => w.id === s.wallpaper) && ['fixed', 'open', '5', '15', '60'].includes(s.mode), s);
+    check('Invalid values recover usable bounded Home', s.dock.length >= 1 && s.dock.length <= 10 && walls.some(w => w.id === s.wallpaper) && ['fixed', 'open', '5', '15', '60'].includes(s.mode), s);
     await closePage();
     await page({ seed: baseline({ dock: [EXTRA, 'netflix'], lastApp: EXTRA }), catalogFailure: true });
     await library();
@@ -233,6 +261,11 @@ try {
     await page({ seed: null });
     check('Fresh installs use Kevin\'s confirmed shortcuts', same((await state()).dock, KEVIN_DEFAULTS));
     await closePage();
+    await page({ seed: baseline({ dock: KEVIN_DEFAULTS.slice(0, -1), lastApp: 'netflix' }) });
+    check('Existing nine-app Home appends Xbox without reordering saved shortcuts', same((await state()).dock, KEVIN_DEFAULTS) && (await stored()).xboxShortcutMigration === true, await stored());
+    await editor(); await remove('xbox'); await current.reload(); await ready();
+    check('Removed Xbox shortcut is not resurrected after migration', !(await state()).dock.includes('xbox') && (await stored()).xboxShortcutMigration === true, await stored());
+    await closePage();
     await page({ model: 'QN85QN90DDFXZA' });
     check('QN90D omits unsupported Art Mode control', !(await call('actions')).includes('util.art'));
     await closePage();
@@ -241,6 +274,25 @@ try {
     await closePage();
     await page({ seed: baseline({ mode: 'open' }), storageFailure: true });
     check('Failed open-mode write retains prior photo', (await state()).wallpaper === walls[0].id && (await stored()).wallpaper === walls[0].id);
+  });
+  await run('Xbox HDMI source shortcut', async () => {
+    await page({ seed: null });
+    await act('home.app.xbox');
+    await current.waitForFunction(() => ShoreQA.where().view === 'source' && !ShoreQA.state().source.loading);
+    const available = await current.locator('[data-action^="source.choose."]').allTextContents();
+    check('First use lists connected and disconnected HDMI inputs with their status', JSON.stringify(available) === JSON.stringify(['HDMI 2Connected · Use for Xbox', 'HDMI 3Disconnected · Use for Xbox']), available);
+    await act('source.choose.3');
+    await current.waitForFunction(() => __tv.calls.some(call => call.method === 'showSource'));
+    const sourceCalls = await current.evaluate(() => __tv.calls.filter(call => /Source$/.test(call.method) || call.method === 'setSource'));
+    check('Chosen HDMI input is persisted and shown through TVWindow', (await stored()).xboxSource.number === 3 && sourceCalls.some(call => call.method === 'setSource' && call.source.number === 3 && call.source.token === 'disconnected-hdmi-3') && sourceCalls.some(call => call.method === 'showSource' && call.rectangle.join(',') === '0px,0px,100%,100%' && call.windowType === 'MAIN' && call.zOrder === 'FRONT'), sourceCalls);
+    await nav('back'); await current.waitForFunction(() => __tv.calls.some(call => call.method === 'hideSource'));
+    check('Back hides the TV window and returns to Home', (await call('where')).view === 'home' && (await current.evaluate(() => __tv.calls.at(-1))).method === 'hideSource');
+    await scene('settings'); await act('settings.group.samsung'); await act('samsung.xbox');
+    await current.waitForFunction(() => ShoreQA.where().view === 'source' && !ShoreQA.state().source.loading);
+    check('Samsung settings reopens HDMI selection for recovery', (await call('actions')).includes('source.choose.2') && (await call('actions')).includes('source.refresh'));
+    await act('source.back'); await scene('home'); await act('home.app.xbox');
+    await current.waitForFunction(() => __tv.calls.filter(call => call.method === 'showSource').length === 2);
+    check('Saved Xbox input re-queries and passes the current SystemInfo source object', (await current.evaluate(() => __tv.calls.filter(call => call.method === 'setSource').at(-1))).source.token === 'disconnected-hdmi-3');
   });
   await run('Real catalogue and native launch boundary', async () => {
     await page(); await library();
@@ -269,7 +321,7 @@ try {
   });
   await run('Catalogue failure and retry', async () => {
     await page({ catalogFailure: true }); await library();
-    check('Catalogue failure leaves Home intact', same((await state()).dock, PRIMARY));
+    check('Catalogue failure leaves Home intact', same((await state()).dock, PRIMARY.concat(['xbox'])));
     await current.evaluate(() => { __tv.catalogFailure = false; }); await act('apps.retry');
     await current.waitForSelector('[data-action="apps.open.' + EXTRA + '"]');
     check('Retry displays real installed names', (await current.locator('[data-action^="apps.open."]').count()) === 12);
@@ -300,7 +352,7 @@ try {
     check('Delayed catalogue safely fills reopened view', (await call('where')).view === 'apps' && (await state()).catalog.ids.includes(EXTRA) && (await call('where')).focusCount === 1);
   });
   await run('Immediate edits, undo, move cancellation and limits', async () => {
-    await page(); await editor();
+    await page({ seed: baseline({ dock: PRIMARY.concat(['xbox']) }) }); await editor();
     const start = (await state()).dock;
     await remove('netflix');
     check('Remove persists membership and keeps installation', !(await stored()).dock.includes('netflix') && (await current.evaluate(() => __tv.catalog.some(a => a.id === 'org.tizen.netflix-app'))));
@@ -312,9 +364,9 @@ try {
     await act('editor.move.netflix'); await nav('down', 'ok');
     const moved = start.slice(); [moved[1], moved[2]] = [moved[2], moved[1]];
     check('Placed move persists immediately', same((await stored()).dock, moved));
-    await act('editor.add.' + EXTRA); check('Nine-app cap prevents addition', (await state()).dock.length === 9 && !(await state()).dock.includes(EXTRA));
+    await act('editor.add.' + EXTRA); check('Ten-shortcut cap prevents addition', (await state()).dock.length === 10 && !(await state()).dock.includes(EXTRA));
     await remove('stremio'); await act('editor.add.' + EXTRA);
-    check('Native app can be pinned with stable ID', (await stored()).dock.includes(EXTRA) && (await state()).dock.length === 9);
+    check('Native app can be pinned with stable ID', (await stored()).dock.includes(EXTRA) && (await state()).dock.length === 10);
     check('Native pin retains readable metadata for failed discovery', (await stored()).appRecords.some(a => a.id === EXTRA && a.name === UNSAFE_NAME));
     await current.reload(); await ready(); check('Native pin survives reload', (await state()).dock.includes(EXTRA));
     await editor(); const ids = (await state()).dock;
@@ -816,7 +868,7 @@ try {
   await run('Physical-key repeats and Back hierarchy', async () => {
     await page(); await editor(); await remove('netflix');
     await current.keyboard.down('Enter'); await current.keyboard.down('Enter');
-    check('Held OK restores once without removing again', (await state()).dock.includes('netflix') && (await state()).dock.length === 9);
+    check('Held OK restores once without removing again', (await state()).dock.includes('netflix') && (await state()).dock.length === 10);
     await current.keyboard.up('Enter');
     await current.keyboard.down('Escape'); await current.keyboard.down('Escape');
     check('Held Back closes one layer only', (await call('where')).view === 'settings' && (await state()).focusAction === 'settings.editor');

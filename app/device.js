@@ -70,5 +70,57 @@
       }, function (err) { finish(failure(err)); });
     } catch (err) { finish(failure(err)); }
   }
-  window.FrameDevice = { launch: launch, launchApp: launchApp, art: art, home: home, settings: settings, apps: apps };
+  function sourceFailure(err) {
+    return { message: 'The TV could not open that HDMI input.', detail: err && (err.message || err.name) || 'Check the Xbox connection, then choose an input again.' };
+  }
+  function sourceInfo(done) {
+    var finish = bounded(done);
+    try {
+      tizen.systeminfo.getPropertyValue('VIDEOSOURCE', function (value) {
+        var result = [];
+        function add(list, connected) {
+          (list || []).forEach(function (source) {
+            var number = source && source.number;
+            if (!source || String(source.type || '').toUpperCase() !== 'HDMI' || !/^[0-9]+$/.test(String(number))) return;
+            result.push({ source: source, type: 'HDMI', number: Number(number), label: 'HDMI ' + Number(number), connected: connected });
+          });
+        }
+        add(value && value.connected, true); add(value && value.disconnected, false);
+        result.sort(function (a, b) { return a.number - b.number; });
+        finish(null, result);
+      }, function (err) { finish(sourceFailure(err)); });
+    } catch (err) { finish(sourceFailure(err)); }
+  }
+  function sources(done) {
+    if (!window.tizen || !tizen.systeminfo || !tizen.tvwindow) { unavailable(done); return; }
+    sourceInfo(function (err, list) {
+      if (err) { done(err); return; }
+      done(null, list.map(function (entry) { return { type: entry.type, number: entry.number, label: entry.label, connected: entry.connected }; }));
+    });
+  }
+  function showSource(source, done) {
+    if (!window.tizen || !tizen.tvwindow) { unavailable(done); return; }
+    sourceInfo(function (err, list) {
+      var selected, i;
+      if (err) { done(err); return; }
+      for (i = 0; i < list.length; i++) if (list[i].type === source.type && list[i].number === source.number) { selected = list[i]; break; }
+      if (!selected) { done({ message: 'That saved HDMI input is no longer available.', detail: 'Choose the Xbox input again.' }); return; }
+      var finish = bounded(done);
+      try {
+        tizen.tvwindow.setSource(selected.source, function () {
+        try {
+          tizen.tvwindow.show(function () { finish(null); }, function (err) { finish(sourceFailure(err)); }, ['0px', '0px', '100%', '100%'], 'MAIN', 'FRONT');
+        } catch (err) { finish(sourceFailure(err)); }
+      }, function (err) { finish(sourceFailure(err)); });
+      } catch (err) { finish(sourceFailure(err)); }
+    });
+  }
+  function hideSource(done) {
+    if (!window.tizen || !tizen.tvwindow) { unavailable(done); return; }
+    var finish = bounded(done);
+    try { tizen.tvwindow.hide(function () { finish(null); }, function (err) { finish(sourceFailure(err)); }); }
+    catch (err) { finish(sourceFailure(err)); }
+  }
+  window.FrameDevice = { launch: launch, launchApp: launchApp, art: art, home: home, settings: settings, apps: apps,
+    sources: sources, showSource: showSource, hideSource: hideSource };
 }());

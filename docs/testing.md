@@ -20,7 +20,7 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright" npx playwright install chromiu
 PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright" npm run check:browser
 ```
 
-For manual review, use `npm run dev` and open `/home/`. Use the arrow keys, Enter and Escape. Check the changed flow in List and Dock, on Photo, Light and Dark backgrounds. Check a single app and all nine apps when changing app layout. In Settings, browse without applying, apply with OK, return with both Back routes, and cancel a pending resource load. Check editor placement/undo, wallpaper rotation pausing during panels/background time, and restored focus on return when those flows change. Browser preferences are separate from TV preferences.
+For manual review, use `npm run dev` and open `/home/`. Use the arrow keys, Enter and Escape. Check the changed flow in List and Dock, on Photo, Light and Dark backgrounds. Check a single app and all ten Home shortcuts when changing app layout. In Settings, browse without applying, apply with OK, return with both Back routes, and cancel a pending resource load. Check editor placement/undo, wallpaper rotation pausing during panels/background time, and restored focus on return when those flows change. Browser preferences are separate from TV preferences.
 
 ## Physical TV checks
 
@@ -31,5 +31,6 @@ Run these only under a task that includes TV testing. Announce any installation 
 3. Check Art Mode, Other apps, TV settings and Settings → Samsung → Samsung Home; verify the actual visible destinations.
 4. Check saved appearance/app order/wallpaper after relaunch. Check timed rotation pauses while a panel is open or the app is hidden.
 5. Test normal power-on after a streaming app and the usual Art Mode routine only when that work is included. Preserve the native Home recovery baseline and restore it before any uninstall/identity change.
+6. For Xbox, choose the actual connected or sleeping HDMI input, confirm it fills the TV window, press Back to hide it and return to the selected Xbox shortcut, then reopen Settings → Samsung → Xbox input and confirm reselection. TVWindow is an in-app video plane, so Game Mode, VRR, gaming latency and controller behaviour are unverified and must be recorded separately; browser and SDK checks cannot establish them.
 
 The current pending results are listed at the top of `tv-status.md`. Browser CPU throttling is a development comparison, not a TV performance measurement.

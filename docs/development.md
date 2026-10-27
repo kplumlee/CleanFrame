@@ -13,12 +13,14 @@ All UI assets, public fonts and the fifteen wallpapers are bundled. This private
 ## Runtime map and compatibility
 
 - `app/index.html` loads the device adapter, gallery/font/palette catalogues, `assets/icons/metrics.js` and `main.js`, with `style.css`.
-- `main.js` owns the List and Dock layouts, panel stack, focus, preferences and wallpaper timers. `device.js` owns installed-app discovery and Tizen calls. Keep device details in that adapter.
+- `main.js` owns the List and Dock layouts, panel stack, focus, preferences and wallpaper timers. `device.js` owns installed-app discovery, HDMI TVWindow control and Tizen calls. Keep device details in that adapter.
 - The logical stage is 1920 x 1080, scaled uniformly to the viewport. Check at 1920 x 1080 and 1280 x 720. Glass geometry and cached materials must stay aligned.
 - Preferences use localStorage key `cleanframe.home.v1`, with a fallback read from `cleanframe.shore.v1`. Legacy fields are `dock`, `wallpaper`, `mode`, `lastApp` and `theme`. The 0.6 migration preserves app order, wallpaper, rotation and selection. Legacy `list` becomes Dark / List / Type; `shore` and `grid` become Photo / Dock / Glass. Appearance axes are stored separately. A saved dynamic app keeps its real app ID and name; discovery refreshes the installed catalogue. Keep migration checks when changing this format.
 - `window.ShoreQA.state()` and `.where()` expose state and focus for browser tests. `minuteMs` can shorten rotation intervals in an isolated browser test.
 
 The tested target is the Tizen 9.0 TV in [TV status](tv-status.md). The manifest's `required_version="6.5"` is a package declaration, not proof that Tizen 6.5 has been tested. The exact TV Chromium/WebKit engine version has not been recorded. Keep runtime JavaScript ES5-compatible and verify any new DOM/CSS API on the target before claiming support. `node --check` checks syntax for Node; it does not enforce ES5 or TV API availability.
+
+The Xbox shortcut reads connected and disconnected `VIDEOSOURCE` HDMI entries and uses public Tizen TVWindow `setSource` / `show` / `hide` calls. Its port is selected on the TV and stored in Home preferences; each launch re-reads the source list and passes the matching current SystemInfo source object to `setSource`. It is not an application launch target. The `tv.window` and `systeminfo` manifest privileges are required. Browser checks cover the adapter boundary only. Verify TVWindow presentation, physical gaming latency and controller behaviour on the target TV before making compatibility claims.
 
 Keep material rendering in the development tools. See [asset generation](assets.md) and [testing](testing.md).
 

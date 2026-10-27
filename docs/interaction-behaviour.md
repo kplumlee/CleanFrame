@@ -31,9 +31,11 @@ A font or photo change applies only after its resources are ready and storage su
 
 The selected font applies to Home app names, the clock and Home controls, including Newsreader. Settings, All apps, the Home editor and status text retain Manrope. The preview shows the committed Home appearance and its clock continues to update. Pangram faces are available in Nathan's private build when the local files are present; their binaries are not included in the public source. An unavailable optional face is omitted. If the baseline font is slow or missing, Home remains usable with a local fallback and can recover when the font loads.
 
-## Streaming apps
+## Streaming apps and Xbox
 
-The nine default apps keep their known native IDs. Other installed consumer apps can also be added to Home. Launching uses the public `tizen.application.launch` API with the app's native ID. Missing apps and denied launches produce a real error. No web player, placeholder success page or account credential is embedded.
+The nine default apps keep their known native IDs. Xbox is a tenth Home shortcut and is a TV input action, not an application ID. Other installed consumer apps can also be added to Home. Launching apps uses the public `tizen.application.launch` API with the app's native ID. Missing apps and denied launches produce a real error. No web player, placeholder success page or account credential is embedded.
+
+On first use, Xbox reads the TV's HDMI sources and labels connected and disconnected inputs, so a sleeping console can still be selected. It never guesses the first HDMI port. The selected port is saved locally and later Xbox selections re-read the current source list before showing that source through Tizen TVWindow full screen. Settings → Samsung → Xbox input reopens the source chooser to change or recover that selection. Back requests that TVWindow hide; whether CleanFrame remains visible afterward must be checked on this QN90D. TVWindow embedding is distinct from a native input switch; Game Mode, VRR, latency and controller behaviour require a TV check.
 
 ## All apps
 
@@ -43,14 +45,14 @@ The five-column grid scrolls with remote focus. OK launches an app; its On Home 
 
 ## Apps on Home
 
-Open the editor from Settings or All apps. On Home shows the current order on the left. Not on Home shows Recently removed first, followed by other installed apps on the right. Home holds one to nine apps.
+Open the editor from Settings or All apps. On Home shows the current order on the left. Not on Home shows Recently removed first, followed by Xbox and other installed apps on the right. Home holds one to ten shortcuts.
 
 - Reorder: OK on an app name picks it up. Up/Down moves it. OK places it and saves the order. Back puts an unplaced app back without saving that move.
 - Remove: Right from an app name reaches Remove from Home. OK saves the removal and moves focus to the same app in Recently removed. The app stays installed.
 - Add: OK on an app in Not on Home adds it and saves. A recently removed app returns to its previous position within the editing session; another app is added at the end. Focus follows the app to its Remove from Home control, so another OK can reverse the addition.
 - Undo reverses a completed addition, removal or reorder from the current editing session. Done or Back closes the editor and keeps completed changes. Undo history ends when the editor closes.
 
-Removing the last Home app or adding a tenth app is prevented. A failed storage write keeps the committed choices and order, with a retry message. Saved native app IDs and names survive a restart or a failed catalogue refresh.
+Removing the last Home shortcut or adding an eleventh shortcut is prevented. A failed storage write keeps the committed choices and order, with a retry message. Saved native app IDs and names survive a restart or a failed catalogue refresh.
 
 ## Art Mode and Samsung screens
 
