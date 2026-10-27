@@ -71,6 +71,8 @@ For developer access, connect the TV and Mac to the same network, enable Develop
 
 Native Home/startup was configured separately from the app installer. Physical Home from Netflix is confirmed. The one-shot helper runs as the SDK user. See scripts/native-home/README.md and docs/tv-status.md for the tested firmware and pending visual checks.
 
+Those native results and commands apply only to the reference Frame TV in docs/tv-status.md. Kevin's QN90D has the CleanFrame web app installed, but its native Home/startup settings have not been changed. Do not run the reference helper on the QN90D: its model, firmware, app identity, and restore baseline are different. The QN90D's exact native runtime and original Home values have not been safely captured.
+
 Query with `python3 scripts/native-home/run.py query`. Restore the saved pre-integration Home/startup values with `python3 scripts/native-home/run.py restore`. The private baseline is `.local/native-home/original.json`; preserve it and do not replace it with the applied state. The legacy `.local/native-home/run.py` command is also retained. Restore before uninstalling CleanFrame or changing its stable app identity.
 
 To rebuild the one-shot helper with this Mac's private verified SDK:
