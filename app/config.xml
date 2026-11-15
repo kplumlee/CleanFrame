@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="https://local.cleanframe-kevin/app" version="0.6.1" viewmodes="maximized">
-  <tizen:application id="MiQ4vj1W1G.CleanFrameKevin" package="MiQ4vj1W1G" required_version="6.5"/>
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="https://local.cleanframe-kevin/app" version="0.7.0" viewmodes="maximized">
+  <!-- Installation floor; device-specific evidence is recorded in docs/compatibility.md. -->
+  <tizen:application id="MiQ4vj1W1G.CleanFrameKevin" package="MiQ4vj1W1G" required_version="5.0"/>
   <content src="index.html"/>
   <name>CleanFrame</name>
   <icon src="icon.png"/>

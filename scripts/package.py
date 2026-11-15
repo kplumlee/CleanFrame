@@ -1,70 +1,36 @@
-"""Build and sign with Kevin's installed official Tizen SDK (macOS)."""
-from pathlib import Path
+"""Build and sign through an existing official Tizen SDK profile (macOS/Linux)."""
 import os
+from pathlib import Path
 import pty
 import select
 import signal
-import subprocess
+import tempfile
+import termios
 import time
-import xml.etree.ElementTree as XML
 import zipfile
-from font_assets import write_widget_archive
 
-ROOT = Path(__file__).resolve().parents[1]
-PRIVATE = ROOT / '.local/certificates/private'
-sdk_override = os.environ.get('CLEANFRAME_TIZEN_SDK')
-sdk_candidates = [Path(sdk_override).expanduser()] if sdk_override else [Path('/Users/kplumlee/tizen-studio'), ROOT / '.local/tizen-sdk']
-SDK = next((candidate for candidate in sdk_candidates if (candidate / 'tools/ide/bin/tizen').is_file()), sdk_candidates[0])
-CLI = SDK / 'tools/ide/bin/tizen'
-profile_name = os.environ.get('CLEANFRAME_SIGNING_PROFILE', 'KevinQN90D')
-if not CLI.exists():
-    raise SystemExit('Official Tizen SDK missing. Set CLEANFRAME_TIZEN_SDK to its installed path.')
-sdk_info = SDK / 'sdk.info'
-sdk_data = None
-if sdk_info.is_file():
-    for line in sdk_info.read_text().splitlines():
-        if line.startswith('TIZEN_SDK_DATA_PATH='):
-            sdk_data = Path(line.split('=', 1)[1]).expanduser()
-            break
-profile_override = os.environ.get('CLEANFRAME_TIZEN_PROFILE_PATH')
-profile_candidates = [Path(profile_override).expanduser()] if profile_override else [
-    sdk_data / 'profile/profiles.xml' if sdk_data else PRIVATE / 'profiles.xml',
-    PRIVATE / 'profiles.xml'
-]
-profile = next((candidate for candidate in profile_candidates if candidate.is_file()), profile_candidates[0])
-password_file = Path(os.environ.get('CLEANFRAME_SIGNING_PASSWORD_FILE', PRIVATE / 'certificate-password.txt')).expanduser()
-if not profile.exists():
-    raise SystemExit('Kevin\'s Samsung signing profile is missing. Complete the certificate workflow first.')
-# Certificate Manager stores the profile credentials in the SDK profile. A local
-# password file is optional for command-line-only profiles that still prompt.
-password = password_file.read_bytes().strip() if password_file.exists() else None
-if password == b'':
-    raise SystemExit('Signing password file is empty.')
-dist = ROOT / 'dist'
-dist.mkdir(exist_ok=True)
-tree = XML.parse(profile)
-profiles = {item.get('name') for item in tree.getroot().iter('profile')}
-if profile_name not in profiles:
-    raise SystemExit('CLEANFRAME_SIGNING_PROFILE does not exist in Kevin\'s local profiles.xml.')
-result = subprocess.run([str(CLI), 'cli-config', 'default.profiles.path=' + str(profile)], capture_output=True, timeout=30)
-if result.returncode:
-    raise SystemExit('SDK signing profile configuration failed.')
-unsigned = dist / 'CleanFrame-unsigned.wgt'
-write_widget_archive(unsigned)
-signed_dir = dist / 'signed'
-signed_dir.mkdir(exist_ok=True)
-command = [str(CLI), 'package', '-t', 'wgt', '-s', profile_name, '-o', str(signed_dir), '--', str(unsigned)]
-pid, terminal = pty.fork()
-if pid == 0:
-    os.execv(command[0], command)
-output = b''
-passwords = saves = 0
-missing_password = False
-deadline = time.monotonic() + 60
-try:
-    while time.monotonic() < deadline:
-        ready, _, _ = select.select([terminal], [], [], 1)
-        if ready:
+from font_assets import write_widget_archive
+from local_config import ROOT, load_settings, read_password
+from private_files import check_signed_widget
+
+
+def sign(command, password=None, timeout=60):
+    # SDK output can include profile credentials. Never copy it to diagnostics.
+    pid, terminal = pty.fork()
+    if pid == 0:
+        try:
+            os.execv(command[0], command)
+        except BaseException:
+            os._exit(127)
+    output = b''
+    passwords = saves = 0
+    status = None
+    deadline = time.monotonic() + timeout
+    try:
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([terminal], [], [], 1)
+            if not ready:
+                continue
             try:
                 chunk = os.read(terminal, 8192)
             except OSError:
@@ -72,34 +38,78 @@ try:
             if not chunk:
                 break
             output += chunk
+            if len(output) > 1024 * 1024:
+                raise ValueError('SDK produced excessive signing output.')
             count = output.lower().count(b'password:')
             if count > passwords:
                 if password is None:
-                    missing_password = True
-                    os.kill(pid, signal.SIGTERM)
-                    break
+                    raise ValueError('SDK requested a password. Configure saved profile access or select a protected password file.')
+                if count > 2:
+                    raise ValueError('SDK requested too many passwords. Check both certificate passwords in the selected profile.')
+                attributes = termios.tcgetattr(terminal)
+                attributes[3] &= ~termios.ECHO
+                termios.tcsetattr(terminal, termios.TCSANOW, attributes)
                 os.write(terminal, password + b'\n')
                 passwords = count
             count = output.count(b'No: (N) ?')
             if count > saves:
                 os.write(terminal, b'n\n')
                 saves = count
-    else:
-        os.kill(pid, signal.SIGTERM)
-        raise SystemExit('SDK signing timed out.')
-finally:
-    os.close(terminal)
-os.waitpid(pid, 0)
-redacted = output.replace(password, b'[redacted]').decode(errors='replace') if password else output.decode(errors='replace')
-if missing_password:
-    raise SystemExit('SDK requested a signing password. Recreate or repair the Certificate Manager profile, or set CLEANFRAME_SIGNING_PASSWORD_FILE to a private password file.')
-if 'is created successfully' not in redacted:
-    print(redacted)
-    raise SystemExit('SDK did not confirm a signed package.')
-signed = signed_dir / unsigned.name
-with zipfile.ZipFile(signed) as package:
-    if not {'author-signature.xml', 'signature1.xml'}.issubset(package.namelist()):
-        raise SystemExit('Package is missing its signing files.')
-target = dist / 'CleanFrame.wgt'
-target.write_bytes(signed.read_bytes())
-print('Signed widget created: ' + str(target))
+        else:
+            raise ValueError('SDK signing timed out.')
+        while time.monotonic() < deadline:
+            finished, status = os.waitpid(pid, os.WNOHANG)
+            if finished:
+                break
+            status = None
+            time.sleep(0.01)
+        if status is None:
+            raise ValueError('SDK signing timed out.')
+    finally:
+        if status is None:
+            finished, status = os.waitpid(pid, os.WNOHANG)
+            if not finished:
+                try:
+                    try:
+                        os.killpg(pid, signal.SIGKILL)
+                    except PermissionError:
+                        os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                _, status = os.waitpid(pid, 0)
+        os.close(terminal)
+    return os.waitstatus_to_exitcode(status)
+
+
+def main(root=ROOT):
+    settings = load_settings(root)
+    cli = settings['sdk_path'] / 'tools/ide/bin/tizen'
+    if not cli.is_file() or not os.access(cli, os.X_OK):
+        raise ValueError('Tizen CLI missing. Set sdk_path in .local/signing.json; see docs/development.md.')
+    password = read_password(settings['password_file'], root=root) if settings['password_file'] else None
+    dist = root / 'dist'
+    dist.mkdir(exist_ok=True)
+    unsigned = dist / 'CleanFrame-unsigned.wgt'
+    write_widget_archive(unsigned, root=root, identity=settings['identity'])
+    # A fresh folder prevents a previous signed widget masking a failed build.
+    signed_dir = Path(tempfile.mkdtemp(prefix='signed-', dir=dist))
+    command = [str(cli), 'package', '-t', 'wgt', '-s', settings['profile'], '-o', str(signed_dir), '--', str(unsigned)]
+    if sign(command, password):
+        raise ValueError('SDK signing failed. Check the selected profile and password access in Certificate Manager.')
+    signed = signed_dir / unsigned.name
+    check_signed_widget(signed, settings['identity'])
+    target = dist / 'CleanFrame.wgt'
+    # Promote on the same filesystem so a failed copy preserves the last build.
+    ready = signed_dir / 'validated.wgt'
+    ready.write_bytes(signed.read_bytes())
+    ready.replace(target)
+    print('Signed widget created: ' + str(target))
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (ValueError, OSError, zipfile.BadZipFile, termios.error) as error:
+        # Known validation messages contain no credentials. Suppress SDK/OS payloads.
+        message = str(error) if isinstance(error, ValueError) else 'Cannot complete packaging. Check SDK/profile setup and local file permissions.'
+        raise SystemExit(message) from None

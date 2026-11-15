@@ -1,4 +1,4 @@
-# Interaction behaviour — 0.6.1
+# Interaction behaviour — 0.7.0
 
 ## Home
 
@@ -21,7 +21,7 @@ Settings opens a grouped overview: Background, Layout, Typography, Focus, Apps o
 | Typography | Manrope, Neue Montreal, Mori, Pangram Sans, Geist and Newsreader, when available |
 | Focus | Type or Glass; Soft, Frost or Clear tint material |
 | Apps on Home | Membership and arrangement editor |
-| Samsung | Samsung Home and TV settings |
+| Samsung | Samsung Home, TV settings and Inputs |
 
 Up/Down moves between rows. Left/Right moves between choices in a horizontal row. Focus alone changes neither the preview nor saved preferences in these appearance groups. Wallpaper has its own temporary photo preview, described below. OK applies the focused value. A checkmark identifies the applied value; the filled plate identifies remote focus. Applying the current value does not write again.
 
@@ -35,7 +35,7 @@ The selected font applies to Home app names, the clock and Home controls, includ
 
 The nine default apps keep their known native IDs. Xbox is a tenth Home shortcut and is a TV input action, not an application ID. Other installed consumer apps can also be added to Home. Launching apps uses the public `tizen.application.launch` API with the app's native ID. Missing apps and denied launches produce a real error. No web player, placeholder success page or account credential is embedded.
 
-On first use, Xbox reads the TV's HDMI sources and labels connected and disconnected inputs, so a sleeping console can still be selected. It never guesses the first HDMI port. The selected port is saved locally and later Xbox selections re-read the current source list before showing that source through Tizen TVWindow full screen. Settings → Samsung → Xbox input reopens the source chooser to change or recover that selection. Back requests that TVWindow hide; whether CleanFrame remains visible afterward must be checked on this QN90D. TVWindow embedding is distinct from a native input switch; Game Mode, VRR, latency and controller behaviour require a TV check.
+On first use, Xbox reads the TV's HDMI sources and labels connected, disconnected and active inputs, so a sleeping console can still be selected. It never guesses the first HDMI port. The selected port is saved locally. Each later Xbox selection uses the same `FrameDevice.setSource` path as Settings → Samsung → Inputs: it re-reads the source list, selects that exact port and opens Samsung's TV viewer, so the Xbox runs as a native input rather than inside CleanFrame. The remote's Home button returns to CleanFrame. A failed switch reopens the chooser with the error. Settings → Samsung → Xbox input changes the saved port. Game Mode, VRR, latency, CEC wake and controller behaviour require a TV check.
 
 ## All apps
 
@@ -64,6 +64,16 @@ Samsung Home explicitly launches the original `com.samsung.tv.csfs` app, indepen
 
 All calls have bounded response handling. A failure leaves CleanFrame usable. No simulated device success views remain. Browser validation cannot confirm the visible Samsung destination.
 
+Installed-app discovery allows up to 20 seconds for large TV catalogues; launch controls retain an 8-second limit. Opening All apps or the editor refreshes the catalogue while retaining saved Home choices. No discovery polling runs during hidden startup.
+
+## HDMI inputs
+
+Settings → Samsung → Inputs opens the HDMI chooser. The adapter reads the TV’s actual connected and disconnected source records, including sleeping devices that may be listed as disconnected. It does not guess a universal port count or add a fourth default Home control. Missing APIs, denied access and discovery failure produce an unavailable/error state rather than invented ports. The active source comes from the synchronous `tvwindow.getSource()` return value.
+
+Up/Down selects an input. OK requests that exact source; Back returns to Samsung Settings. Retry after a failed load rereads the available sources. A routing error remains an error, and a failed handoff leaves the launcher usable. Timed-out or cancelled requests cannot start a later routing or viewer action; a native request already sent to the TV may itself be uncancellable.
+
+Selecting a source, opening Samsung’s viewer, seeing the expected HDMI picture and waking a CEC device are separate results. The portable implementation does not import firmware-specific viewer payloads or claim to wake a sleeping device. No input discovery or polling runs during hidden startup.
+
 ## Preferences and wallpaper
 
 The launcher stores appearance, Home order, recently removed apps, the last launched Home app, wallpaper and rotation locally. List and Dock share these preferences. The existing `cleanframe.home.v1` key is retained, with a fallback read from `cleanframe.shore.v1`. Legacy List maps to Dark + List + Type; Glass Dock and Glass Grid map to Photo + Dock + Glass. App order, wallpaper, rotation and the last Home app are preserved.
@@ -86,3 +96,5 @@ The native Home operation and startup configuration from 19 October remain separ
 Both layouts show the TV's local time in 12-hour format, without AM/PM or seconds. It updates at the minute boundary and on return to the launcher. No date or clock panel is shown.
 
 Photographic materials and blurred panel backgrounds are generated before packaging and stay aligned with the full-screen image. Photo colour and contrast metadata are also prepared offline. Navigation does not sample image pixels, run an optics engine or apply live backdrop blur. Flat backgrounds use matching light or dark panel colours. Focus feedback uses transforms and opacity; reduced motion removes animated scaling and movement while retaining opacity feedback.
+
+Hidden prelaunch can install a fully loaded wallpaper bundle without waiting for an animation frame. A valid loaded image remains usable if detached-image decoding rejects. A failed startup bundle retries when the launcher becomes visible; an active wallpaper preview keeps its candidate. Font recovery clears fallback measurements and cached markup. This readiness fallback uses a completed load and nonzero image dimensions; it does not prove a TV has painted the image, and an accepted bundle is not automatically decoded again on return. These paths have browser regression coverage; physical cold-boot behaviour still needs owner observation.

@@ -7,7 +7,9 @@ import os
 from pathlib import Path
 import subprocess
 import time
-import xml.etree.ElementTree as XML
+import zipfile
+from local_config import load_settings
+from private_files import check_signed_widget
 
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
@@ -26,17 +28,21 @@ else:
         raise SystemExit('Add the TV address to .local/device.json, pass --host, or provide --sdb-target.')
     ipaddress.ip_address(host)
     serial = host + ':26101'
-
-sdk_override = os.environ.get('CLEANFRAME_TIZEN_SDK')
-sdk_candidates = [Path(sdk_override).expanduser()] if sdk_override else [
-    ROOT / '.local/tizen-sdk',
-    Path('/Users/kplumlee/tizen-studio'),
-]
-sdb = next((candidate / 'tools/sdb' for candidate in sdk_candidates if (candidate / 'tools/sdb').is_file()), None)
-if not sdb:
-    raise SystemExit('Official SDB tool missing. Set CLEANFRAME_TIZEN_SDK or see docs/development.md.')
-manifest = XML.parse(ROOT / 'app/config.xml').getroot()
-app_id = manifest.find('{http://tizen.org/ns/widgets}application').get('id')
+try:
+    settings = load_settings()
+    sdb = settings['sdk_path'] / 'tools/sdb'
+    if not sdb.is_file():
+        raise ValueError('Local SDB tool missing. See docs/development.md.')
+    app_id = settings['identity']['app_id']
+    # Reject a mismatched or unsafe package before connecting to the device.
+    widget = ROOT / 'dist/CleanFrame.wgt'
+    if args.action == 'install':
+        if not widget.exists():
+            raise ValueError('Run npm run package first.')
+        check_signed_widget(widget, settings['identity'])
+except (ValueError, OSError, zipfile.BadZipFile) as error:
+    message = str(error) if isinstance(error, ValueError) else 'Cannot read local SDK settings or signed widget.'
+    raise SystemExit(message) from None
 
 
 def run(*command, quiet=False):
@@ -47,6 +53,7 @@ def run(*command, quiet=False):
     if result.returncode:
         raise SystemExit('SDB command failed.')
     return output
+
 
 if sdb_target:
     state = run('-s', serial, 'get-state', quiet=True).strip()
@@ -63,9 +70,6 @@ elif args.action == 'launch':
     if 'successfully launched' not in output:
         raise SystemExit('App launch was not confirmed. Check the TV.')
 else:
-    widget = ROOT / 'dist/CleanFrame.wgt'
-    if not widget.exists():
-        raise SystemExit('Run npm run package first.')
     digest = hashlib.sha256(widget.read_bytes()).hexdigest()[:12]
     remote = '/home/owner/share/tmp/sdk_tools/CleanFrame-' + digest + '-' + str(time.time_ns()) + '.wgt'
     pushed = run('-s', serial, 'push', str(widget), remote)
